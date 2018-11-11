@@ -1,0 +1,1 @@
+cmd_/home/phanthanhhung/Desktop/DATN/My_Raspberry_Pi/VD2/ebbchar.ko := ld -r -m elf_x86_64 -z max-page-size=0x200000 -T ./scripts/module-common.lds --build-id  -o /home/phanthanhhung/Desktop/DATN/My_Raspberry_Pi/VD2/ebbchar.ko /home/phanthanhhung/Desktop/DATN/My_Raspberry_Pi/VD2/ebbchar.o /home/phanthanhhung/Desktop/DATN/My_Raspberry_Pi/VD2/ebbchar.mod.o ;  true

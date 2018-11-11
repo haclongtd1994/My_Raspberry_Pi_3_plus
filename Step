@@ -1,0 +1,10 @@
+Them thu vien curl
+sudo apt-get install libcurl4-openssl-dev
+Cach su dung mutex pthread va condition
+http://timoday.edu.vn/su-dung-thu-vien-pthead/
+https://computing.llnl.gov/tutorials/pthreads/
+https://github.com/angrave/SystemProgramming/wiki/Synchronization,-Part-5:-Condition-Variables
+http://tuxthink.blogspot.com/2013/01/using-condition-variables-in-pthreads.html
+
+Pthread hay: 
+http://www.yolinux.com/TUTORIALS/LinuxTutorialPosixThreads.html
