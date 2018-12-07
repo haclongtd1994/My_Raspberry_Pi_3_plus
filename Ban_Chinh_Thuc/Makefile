@@ -1,4 +1,3 @@
-obj-m+=kernel_motor_driver.o
 obj-m+=kernel_gpio_to_control.o
 obj-m+=kernel_dht11_driver.o
 CFLAG:=-fpermissive -w -Wall
@@ -9,5 +8,5 @@ all:
 	$(CXX) $(CFLAG) -o main main.cpp $(CLIB)
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	$(RM) *.o user_motor_driver kernel_gpio_to_control.o kernel_dht11_driver.o
+	$(RM) *.o kernel_gpio_to_control.o kernel_dht11_driver.o
 	$(RM)	main

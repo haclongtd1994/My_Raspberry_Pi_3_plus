@@ -30,6 +30,7 @@ static 	int 		data_gpio=0;
 static 	char 		user_device[]="raspberry";
 static 	char 		password_device[]="hunglapro13";
 
+
 void *func_thread_motor(void *ptr);
 void *func_thread_curl_motor(void *ptr);
 void *func_thread_curl_gpio(void *ptr);
@@ -37,6 +38,15 @@ void *func_thread_gpio(void *ptr);
 void *func_thread_curl_dht11_humidity(void *ptr);
 void *func_thread_curl_dht11_temperature(void *ptr);
 void *func_thread_dht11(void *ptr);
+void *func_thread_mini_uart(void *ptr);
+
+
+struct Check_Status{
+	bool dht11 = false;
+	bool motor = false;
+	bool gpio = false;
+};
+Check_Status check;
 
 typedef struct MemoryStruct{
 	char *memory;
@@ -66,6 +76,7 @@ int main(void){
 	pthread_t thread_dht11;
 	pthread_t thread_curl_dht11_humidity;
 	pthread_t thread_curl_dht11_temperature;
+	pthread_t thread_mini_uart;
 
 	int iret_motor;
 	int iret_curl_motor;
@@ -74,6 +85,7 @@ int main(void){
 	int iret_curl_dht11_humidity;
 	int iret_curl_dht11_temperature;
 	int iret_dht11;
+	int iret_mini_uart;
 
 	printf("\r\n" YEL "Program user with curl and motor control" RESET "\r\n");
 
@@ -86,6 +98,7 @@ int main(void){
 	iret_dht11 = pthread_create(&thread_dht11, NULL, func_thread_dht11, NULL);
 	iret_curl_dht11_humidity = pthread_create(&thread_curl_dht11_humidity, NULL, func_thread_curl_dht11_humidity, NULL);
 	iret_curl_dht11_temperature = pthread_create(&thread_curl_dht11_temperature, NULL, func_thread_curl_dht11_temperature, NULL);
+	iret_mini_uart = pthread_create(&thread_mini_uart, NULL, func_thread_mini_uart, NULL);
 
 	printf("Ket qua luong gui du lieu: %d\r\n",iret_curl_motor);
 	printf("Ket qua luong gui du lieu: %d\r\n",iret_curl_gpio);
@@ -94,6 +107,7 @@ int main(void){
 	printf("Ket qua luong gui du lieu dht11 humidity: %d\r\n", iret_curl_dht11_humidity);
 	printf("Ket qua luong gui du lieu dht11 temperature", iret_curl_dht11_temperature);
 	printf("Ket qau luong doc du lieu dht11: %d\r\n", iret_dht11);
+	printf("Ket qau luong doc du lieu mini uart: %d\r\n", iret_mini_uart);
 
 	pthread_join(thread_gpio, NULL);
 	pthread_join(thread_curl_motor,NULL);
@@ -102,10 +116,36 @@ int main(void){
 	pthread_join(thread_dht11, NULL);
 	pthread_join(thread_curl_dht11_humidity, NULL);
 	pthread_join(thread_curl_dht11_temperature, NULL);
+	pthread_join(thread_mini_uart, NULL);
 
 	curl_global_cleanup();
 	return 0;
 }
+
+void *func_thread_mini_uart(void *ptr){
+	int fd;
+	char mini_uart_send[64]="\0";
+  	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
+  	if (fd == -1) {
+   	 	perror("open_port: Unable to open /dev/ttyS0 - ");
+    	return(-1);
+  	}
+  	while(true){
+  		if(check.dht11&&check.motor&&check.gpio){
+  			// Turn off blocking for reads, use (fd, F_SETFL, FNDELAY) if you want that
+		  	fcntl(fd, F_SETFL, 0);
+
+		  	snprintf(mini_uart_send, 64, "Motor: %B, Dht11: %B, Gpio: %B", check.motor, check.dht11, check.gpio);
+
+		  	// Write to the port
+		  	int n = write(fd,mini_uart_send, strlen(mini_uart_send));
+		  	if (n < 0) {
+		    	perror("Write failed - ");
+		    	return -1;
+		  	}
+		  }
+  	}
+} 
 
 void *func_thread_curl_motor(void *ptr){
 	CURL *curl_handle;
@@ -187,7 +227,7 @@ void *func_thread_motor(void *ptr){
 			perror("Failed to write to device...");
 			return errno;
 		}
-
+		check.motor=true;//check func change data motor
 		printf("Press Enter to confirm control motor %s\n",stringtosend);
 		getchar();
 
@@ -227,6 +267,7 @@ void *func_thread_gpio(void *ptr){
 			perror("Failed to write to device...");
 			return errno;
 		}
+		check.gpio = true;
 		sleep(5);
 		ret = write(fd, "OFF", 3);
 		data_gpio=0;
@@ -234,6 +275,7 @@ void *func_thread_gpio(void *ptr){
 			perror("Failed to write to device...");
 			return errno;
 		}
+		check.gpio = true;
 		sleep(5);
 	}
 }
@@ -269,6 +311,7 @@ void *func_thread_dht11(void *ptr){
 		Temperature = dht11_data[2];
 		printf("Humidity: %d, Temperature: %d\r\n", Humidity, Temperature);
 		if(Temperature!=Temperature_Lastchange || Humidity != Humidity_Lastchange){
+			check.dht11=1;
 			Temperature_Lastchange = Temperature;
 			Humidity_Lastchange = Humidity;
 			pthread_cond_broadcast(&dht11_cond);
