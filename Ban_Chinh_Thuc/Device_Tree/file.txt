@@ -1,0 +1,4 @@
+https://saurabhsengarblog.wordpress.com/2015/11/28/device-tree-tutorial-arm/
+http://xillybus.com/tutorials/device-tree-zynq-1
+https://elinux.org/images/4/48/Experiences_With_Device_Tree_Support_Development_For_ARM-Based_SOC's.pdf
+https://android.googlesource.com/kernel/msm/+/android-msm-3.9-usb-and-mmc-hacks/Documentation/devicetree/bindings/gpio/gpio.txt

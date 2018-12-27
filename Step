@@ -1,5 +1,9 @@
 Them thu vien curl
 sudo apt-get install libcurl4-openssl-dev
+Them cac header
+sudo apt-get install raspberrypi-kernel-headers
+
+
 Cach su dung mutex pthread va condition
 http://timoday.edu.vn/su-dung-thu-vien-pthead/
 https://computing.llnl.gov/tutorials/pthreads/

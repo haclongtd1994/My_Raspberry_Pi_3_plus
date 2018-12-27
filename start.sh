@@ -1,4 +1,6 @@
 #!/bin/bash
+PATH:=/home/phanthanhhung/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/phanthanhhung/scripts
+export PATH=$PATH:~/scripts
 
 echo $PATH
 cd ~/Desktop/DATN/My_Raspberry_Pi/TongHop/

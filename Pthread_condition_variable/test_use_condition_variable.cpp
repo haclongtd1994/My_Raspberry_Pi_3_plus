@@ -20,6 +20,7 @@
 #define WEB_DEVICE	"https://luutruthietbiiot.000webhostapp.com/receive_device_id.php"
 
 static 	int 		Humidity, Temperature;//using for function dht11
+static 	int 		Humidity_last, Temperature_last;//using for function dht11
 pthread_mutex_t		dht11_mutex 	= PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t		dht11_cond		= PTHREAD_COND_INITIALIZER;
 pthread_cond_t		dht11_cond_1	= PTHREAD_COND_INITIALIZER;
@@ -68,9 +69,13 @@ void *func_thread_dht11(void *ptr){
 		sleep(0.2);
 		printf("Call condition variable\n");
 		sleep(0.2);
-		
+		Humidity++;
+		Temperature++;
+
 		pthread_mutex_lock(&dht11_mutex);
-		pthread_cond_broadcast(&dht11_cond);
+		if(Temperature!=Temperature_last&&Humidity!=Humidity_last) pthread_cond_broadcast(&dht11_cond);
+		Humidity_last = Humidity;
+		Temperature_last = Temperature;
 		pthread_mutex_unlock(&dht11_mutex);
 	}
 }
@@ -78,7 +83,7 @@ void *func_thread_dht11(void *ptr){
 void *func_thread_curl_dht11_humidity(void *ptr){
 	while(1){
 		pthread_mutex_lock(&dht11_mutex);
-		pthread_cond_wait(&dht11_cond,&dht11_mutex);
+		while(Temperature!=Temperature_last&&Humidity!=Humidity_last) pthread_cond_wait(&dht11_cond,&dht11_mutex);
 		pthread_mutex_unlock(&dht11_mutex);
 		printf("Call function 2\n");
 		sleep(0.2);
@@ -90,7 +95,7 @@ void *func_thread_curl_dht11_temperature(void *ptr){
 
 	while(1){
 		pthread_mutex_lock(&dht11_mutex);
-		 pthread_cond_wait(&dht11_cond,&dht11_mutex);
+		while(Temperature!=Temperature_last&&Humidity!=Humidity_last) pthread_cond_wait(&dht11_cond,&dht11_mutex);
 		pthread_mutex_unlock(&dht11_mutex);
 		printf("Call function 3\n");
 		sleep(0.2);
