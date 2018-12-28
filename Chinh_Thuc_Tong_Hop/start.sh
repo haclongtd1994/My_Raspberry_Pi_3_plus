@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo $PATH
-cd ~/Desktop/DATN/My_Raspberry_Pi/TongHop/
+cd ~/Desktop/Chinh_Thuc_Tong_Hop/
 
 rmmod kernel_gpio_to_control.ko
 rmmod kernel_dht11_driver.ko
@@ -13,4 +13,4 @@ insmod kernel_gpio_to_control.ko
 insmod kernel_dht11_driver.ko
 
 
-./main
+./user_update_final

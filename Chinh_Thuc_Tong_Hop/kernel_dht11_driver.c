@@ -14,7 +14,7 @@ MODULE_VERSION("1.0");
 MODULE_DESCRIPTION("DHT11 FOR RASPBERRY PI 3+");
 MODULE_LICENSE("GPL");
 #define DEVICE_NAME		"DHT11"
-#define CLASS_NAME		"test2"
+#define CLASS_NAME		"datn_dht11"
 
 static DEFINE_MUTEX(mutex_dht11);
 
@@ -179,7 +179,7 @@ static int __init dht11_init(void){
 	dht11_class = class_create(THIS_MODULE,CLASS_NAME);
 	if(IS_ERR(dht11_class)){
 		unregister_chrdev(major_number, DEVICE_NAME);
-		printk(KERN_ALERT "Cannot create class dor device\n");
+		printk(KERN_ALERT "Cannot create class for device\n");
 		return PTR_ERR(dht11_class);
 	}
 	printk(KERN_INFO "Class device created\n");

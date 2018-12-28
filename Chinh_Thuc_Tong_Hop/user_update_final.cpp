@@ -21,13 +21,19 @@
 
 #define BUFFER		256
 static 	char 		receive[BUFFER];//using for function motor
-static 	int 		Humidity, Temperature;//using for function dht11
-int Humidity_Lastchange=0;
-int Temperature_Lastchange=0;
+static 	int 		Humidity=0, Temperature=0;//using for function dht11
+int Humidity_Lastchange=30;
+int Temperature_Lastchange=30;
+int send_dht11_T=0;
+int send_dht11_H=0;
+int send_mini_uart = 0;
 
-
-pthread_mutex_t		dht11_mutex 	= PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t		dht11_cond		= PTHREAD_COND_INITIALIZER;
+pthread_mutex_t		dht11_mutex_T 	= PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t		dht11_mutex_H 	= PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t		dht11_cond_H		= PTHREAD_COND_INITIALIZER;
+pthread_cond_t		dht11_cond_T		= PTHREAD_COND_INITIALIZER;
+pthread_mutex_t		mini_uart_mutex 	= PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t		mini_uart_cond		= PTHREAD_COND_INITIALIZER;
 
 static 	int 		data=0;
 static 	int 		data_gpio=0;
@@ -40,14 +46,15 @@ void *func_thread_gpio(void *ptr);
 void *func_thread_curl_dht11_humidity(void *ptr);
 void *func_thread_curl_dht11_temperature(void *ptr);
 void *func_thread_dht11(void *ptr);
-void *func_thread_mini_uart(void *ptr);
+void *func_thread_mini_uart_send(void *ptr);
+void *func_thread_mini_uart_receive(void *ptr);
 
 
-struct Check_Status{
-	bool dht11 = false;
-	bool gpio = false;
+struct Check_Status_Tang_2{
+	bool gpio_1 = false;
+	bool gpio_2 = false;
 };
-Check_Status check;
+Check_Status_Tang_2 check;
 
 typedef struct MemoryStruct{
 	char *memory;
@@ -75,14 +82,16 @@ int main(void){
 	pthread_t thread_dht11;
 	pthread_t thread_curl_dht11_humidity;
 	pthread_t thread_curl_dht11_temperature;
-	pthread_t thread_mini_uart;
+	pthread_t thread_mini_uart_send;
+	pthread_t thread_mini_uart_receive;
 
 	int iret_curl_gpio;
 	int iret_gpio;
 	int iret_curl_dht11_humidity;
 	int iret_curl_dht11_temperature;
 	int iret_dht11;
-	int iret_mini_uart;
+	int iret_mini_uart_send;
+	int iret_mini_uart_receive;
 
 	printf("\r\n" YEL "Program user with curl and motor control" RESET "\r\n");
 
@@ -93,49 +102,91 @@ int main(void){
 	iret_dht11 = pthread_create(&thread_dht11, NULL, func_thread_dht11, NULL);
 	iret_curl_dht11_humidity = pthread_create(&thread_curl_dht11_humidity, NULL, func_thread_curl_dht11_humidity, NULL);
 	iret_curl_dht11_temperature = pthread_create(&thread_curl_dht11_temperature, NULL, func_thread_curl_dht11_temperature, NULL);
-	iret_mini_uart = pthread_create(&thread_mini_uart, NULL, func_thread_mini_uart, NULL);
+	iret_mini_uart_send = pthread_create(&thread_mini_uart_send, NULL, func_thread_mini_uart_send, NULL);
+	iret_mini_uart_receive = pthread_create(&thread_mini_uart_receive, NULL, func_thread_mini_uart_receive, NULL);
 
 	printf("Ket qua luong gui du lieu: %d\r\n",iret_curl_gpio);
 	printf("Ket qua luong dieu khien gpio: %d\r\n",iret_gpio);
 	printf("Ket qua luong gui du lieu dht11 humidity: %d\r\n", iret_curl_dht11_humidity);
-	printf("Ket qua luong gui du lieu dht11 temperature", iret_curl_dht11_temperature);
+	printf("Ket qua luong gui du lieu dht11 temperature: %d\r\n", iret_curl_dht11_temperature);
 	printf("Ket qau luong doc du lieu dht11: %d\r\n", iret_dht11);
-	printf("Ket qau luong doc du lieu mini uart: %d\r\n", iret_mini_uart);
+	printf("Ket qau luong doc du lieu mini uart: %d\r\n", iret_mini_uart_send);
+	printf("Ket qau luong doc du lieu mini uart: %d\r\n", iret_mini_uart_receive);
 
 	pthread_join(thread_gpio, NULL);
 	pthread_join(thread_curl_gpio,NULL);
 	pthread_join(thread_dht11, NULL);
 	pthread_join(thread_curl_dht11_humidity, NULL);
 	pthread_join(thread_curl_dht11_temperature, NULL);
-	pthread_join(thread_mini_uart, NULL);
+	pthread_join(thread_mini_uart_send, NULL);
+	pthread_join(thread_mini_uart_receive, NULL);
 
 	curl_global_cleanup();
 	return 0;
 }
 
-void *func_thread_mini_uart(void *ptr){
+
+void *func_thread_mini_uart_receive(void *ptr){
+	int fd;
+	char buf[256];
+	int n;
+	// Open the Port. We want read/write, no "controlling tty" status, and open it no matter what state DCD is in
+	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
+	if (fd == -1) {
+		perror("open_port: Unable to open /dev/ttyS0 - ");
+		return(-1);
+	}
+	fcntl(fd, F_SETFL, 0);
+	while(true){
+		n = read(fd, (void*)buf, 255);
+		if (n < 0) {
+			perror("Read failed - ");
+			return -1;
+		}
+		else if (n == 0) printf("No data on port\n");
+		else {
+			buf[n] = '\0';
+			printf("%i bytes read : %s", n, buf);
+		}
+		pthread_mutex_lock(&mini_uart_mutex);
+		send_mini_uart=1;
+		pthread_cond_signal(&mini_uart_cond);
+		pthread_mutex_unlock(&mini_uart_mutex);
+	}
+}
+
+
+void *func_thread_mini_uart_send(void *ptr){
 	int fd;
 	char mini_uart_send[64]="\0";
-  	fd = open("/dev/ttyAMA0", O_RDWR | O_NOCTTY | O_NDELAY);
+  	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
   	if (fd == -1) {
-   	 	perror("open_port: Unable to open /dev/ttyAMA0 - ");
+   	 	perror("open_port: Unable to open /dev/ttyS0 - ");
     	return(-1);
   	}
+  	fcntl(fd, F_SETFL, 0);
   	while(true){
-  		if(check.dht11&&check.gpio){
+  		pthread_mutex_lock(&mini_uart_mutex);//giu khoa mutex
+		while(send_mini_uart==0) pthread_cond_wait(&mini_uart_cond,&mini_uart_mutex);	//cho dieu kien
+		pthread_mutex_unlock(&mini_uart_mutex);//mo khoa mutex
+  		send_mini_uart = 0;
+  			fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
+		  	if (fd == -1) {
+		   	 	perror("open_port: Unable to open /dev/ttyS0 - ");
+		    	return(-1);
+		  	}
   			// Turn off blocking for reads, use (fd, F_SETFL, FNDELAY) if you want that
-		  	fcntl(fd, F_SETFL, 0);
+		  	
 
-		  	snprintf(mini_uart_send, 64, "Dht11: %B, Gpio: %B",  check.dht11, check.gpio);
-
+		  	snprintf(mini_uart_send, 64, "Dht11: 12 28, Gpio: 1\r\n");
+		  	printf("%s\n", mini_uart_send);
 		  	// Write to the port
 		  	int n = write(fd,mini_uart_send, strlen(mini_uart_send));
 		  	if (n < 0) {
 		    	perror("Write failed - ");
 		    	return -1;
 		  	}
-		  	check.dht11 = check.gpio = false;
-		  }
+		
   	}
 } 
 
@@ -193,7 +244,6 @@ void *func_thread_gpio(void *ptr){
 			perror("Failed to write to device...");
 			return errno;
 		}
-		check.gpio = true;
 		sleep(5);
 		ret = write(fd, "OFF", 3);
 		data_gpio=0;
@@ -201,7 +251,6 @@ void *func_thread_gpio(void *ptr){
 			perror("Failed to write to device...");
 			return errno;
 		}
-		check.gpio = true;
 		sleep(5);
 	}
 }
@@ -216,7 +265,7 @@ void *func_thread_dht11(void *ptr){
 		return errno;
 	}
 	while(1){
-		pthread_mutex_lock(&dht11_mutex);
+		
 		ret = write(fd, "READ_DHT11", 10);
 		if(ret<0){
 			perror("Failed to write data to kernel\n");
@@ -234,15 +283,20 @@ void *func_thread_dht11(void *ptr){
 		Humidity = dht11_data[0];
 		Temperature = dht11_data[2];
 		printf("Humidity: %d, Temperature: %d\r\n", Humidity, Temperature);
-		/*
+		
 		if(Temperature!=Temperature_Lastchange || Humidity != Humidity_Lastchange){
-			check.dht11=1;
 			Temperature_Lastchange = Temperature;
 			Humidity_Lastchange = Humidity;
-			pthread_cond_broadcast(&dht11_cond);
-		}*/
-		pthread_cond_broadcast(&dht11_cond);
-		pthread_mutex_unlock(&dht11_mutex);
+			
+		}
+		pthread_mutex_lock(&dht11_mutex_H);
+		send_dht11_H=1;
+		pthread_cond_signal(&dht11_cond_H);
+		pthread_mutex_unlock(&dht11_mutex_H);
+		pthread_mutex_lock(&dht11_mutex_T);
+		send_dht11_T=1;
+		pthread_cond_signal(&dht11_cond_T);
+		pthread_mutex_unlock(&dht11_mutex_T);
 	}
 }
 
@@ -255,12 +309,14 @@ void *func_thread_curl_dht11_humidity(void *ptr){
 	char devSerialNumber[] = "Humidity";
 
 	while(1){
-		pthread_mutex_lock(&dht11_mutex);//giu khoa mutex
-		while(Temperature==Temperature_Lastchange || Humidity == Humidity_Lastchange) pthread_cond_wait(&dht11_cond,&dht11_mutex);	//cho dieu kien
+		pthread_mutex_lock(&dht11_mutex_H);//giu khoa mutex
+		while(send_dht11_H==0) pthread_cond_wait(&dht11_cond_H,&dht11_mutex_H);	//cho dieu kien
+		pthread_mutex_unlock(&dht11_mutex_H);//mo khoa mutex
 		snprintf(message, 100, "tk=%s&mk=%s&serialnumber=%s&frame=%d&data=%d",user_device, password_device,devSerialNumber, frame_number, Humidity);
 		frame_number++;
 		printf(GRN"[CURL]"RESET"message:%s\r\n",message);
 		curl_handle = curl_easy_init();
+		send_dht11_H=0;
 
 		if(curl_handle){
 			curl_easy_setopt(curl_handle, CURLOPT_URL, WEB_DEVICE);
@@ -274,7 +330,6 @@ void *func_thread_curl_dht11_humidity(void *ptr){
 				curl_easy_cleanup(curl_handle);
 			}
 		}
-		pthread_mutex_unlock(&dht11_mutex);//mo khoa mutex
 	}
 }
 void *func_thread_curl_dht11_temperature(void *ptr){
@@ -286,12 +341,14 @@ void *func_thread_curl_dht11_temperature(void *ptr){
 	char devSerialNumber[] = "Temperature";
 
 	while(1){
-		pthread_mutex_lock(&dht11_mutex);
-		while(Temperature==Temperature_Lastchange || Humidity == Humidity_Lastchange) pthread_cond_wait(&dht11_cond,&dht11_mutex);
+		pthread_mutex_lock(&dht11_mutex_T);
+		while(send_dht11_T==0) pthread_cond_wait(&dht11_cond_T,&dht11_mutex_T);
+		pthread_mutex_unlock(&dht11_mutex_T);
 		snprintf(message, 100, "tk=%s&mk=%s&serialnumber=%s&frame=%d&data=%d",user_device, password_device,devSerialNumber, frame_number, Temperature);
 		frame_number++;
 		printf(GRN"[CURL]"RESET"message:%s\r\n",message);
 		curl_handle = curl_easy_init();
+		send_dht11_T =0;
 
 		if(curl_handle){
 			curl_easy_setopt(curl_handle, CURLOPT_URL, WEB_DEVICE);
@@ -305,6 +362,5 @@ void *func_thread_curl_dht11_temperature(void *ptr){
 				curl_easy_cleanup(curl_handle);
 			}
 		}
-		pthread_mutex_unlock(&dht11_mutex);
 	}
 }

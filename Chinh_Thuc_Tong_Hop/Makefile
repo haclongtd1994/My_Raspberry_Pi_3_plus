@@ -1,5 +1,6 @@
 obj-m+=kernel_dht11_driver.o
 obj-m+=kernel_gpio_to_control.o
+obj-m+=kernel_srf05_driver.o
 CFLAG:=-fpermissive -w -Wall
 CLIB:=-lpthread -lcurl
 

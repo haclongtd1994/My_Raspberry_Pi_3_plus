@@ -18,7 +18,7 @@ MODULE_DESCRIPTION("Module to control gpio from user space IPC with kernel thour
 #define GPIO_CLR_0		10
 
 #define DEVICE_NAME		"gpio_test"
-#define CLASS_NAME		"test"
+#define CLASS_NAME		"datn_gpio"
 
 static int major_number;
 static struct class *class_device;
