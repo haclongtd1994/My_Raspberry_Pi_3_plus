@@ -8,7 +8,6 @@
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
-#include <linux/time.h>
 
 MODULE_AUTHOR("PTH");
 MODULE_LICENSE("GPL");
@@ -28,7 +27,8 @@ static void __iomem *gpio_base;
 #define GPIO_PUD			37
 #define GPIO_PUD_CLK		38
 
-#define SRF05_PIN			26
+#define SRF05_PIN_T			24
+#define SRF05_PIN			23
 #define HIGH				1
 #define LOW					0
 
@@ -38,7 +38,8 @@ static char message[256]={0};
 static short size_of_message;
 static struct device *srf05_device;
 static struct class *srf05_class;
-static int srf05_data=0;
+static int srf05_data[1]={0};
+static int temp=0;
 static int OK=0;
 
 static int srf05_open(struct inode*, struct file*);
@@ -110,21 +111,26 @@ static int READ_DATA_PIN(u32 pin){
 }
 
 static void receive_data_srf05(void){
-	struct timeval t0,t1;
+	temp=0;
 	//triger and delay 10us
-	SET_PIN_OUTPUT(SRF05_PIN);
-	SET_PIN_HIGH(SRF05_PIN);
-	udelay(10);
-	SET_PIN_LOW(SRF05_PIN);
-	//change input and while to mearsuring SRF05
+	SET_PIN_OUTPUT(SRF05_PIN_T);
 	SET_PIN_INPUT(SRF05_PIN);
+	SET_PIN_LOW(SRF05_PIN_T);
+	mdelay(200);
+	SET_PIN_HIGH(SRF05_PIN_T);
+	udelay(10);
+	SET_PIN_LOW(SRF05_PIN_T);
+	//change input and while to mearsuring SRF05
+	
 	while(!READ_DATA_PIN(SRF05_PIN));
-	do_gettimeofday(&t0);
-	while(READ_DATA_PIN(SRF05_PIN));
-	do_gettimeofday(&t1);
+	while(READ_DATA_PIN(SRF05_PIN)){
+		udelay(1);
+		temp++;
+	}
 
-	srf05_data = (unsigned long) (t1.tv_sec - t0.tv_sec)*1000 + (t1.tv_usec - t0.tv_usec)/1000;
-	srf05_data = srf05_data/58;
+
+	srf05_data[0] = temp/58;
+	printk(KERN_INFO"SRF05_DATA: %d", srf05_data[0]);
 	OK=1;
 	printk(KERN_INFO"Complete mearsuring\n");
 }
@@ -197,9 +203,10 @@ static ssize_t srf05_write(struct file* filep, const char *buf, size_t len, loff
 static ssize_t srf05_read(struct file* filep, char *buf, size_t len, loff_t *offset){
 	int error;
 	if(OK){
-		error = copy_to_user(buf, &srf05_data, 4);
+		printk(KERN_INFO "message to user: MUC NUOC: %d\n", srf05_data[0]);
+		error = copy_to_user(buf, srf05_data, sizeof(int));
 		if(!error){
-			printk(KERN_INFO "message to user: MUC NUOC: %d\n", srf05_data);
+			printk(KERN_INFO "Send OK: MUC NUOC: %d\n", srf05_data[0]);
 			return 4;
 		}
 		else{
