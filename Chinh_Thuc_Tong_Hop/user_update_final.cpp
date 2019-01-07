@@ -27,6 +27,7 @@ int Temperature_Lastchange=30;
 int send_dht11_T=0;
 int send_dht11_H=0;
 int send_mini_uart = 0;
+int control_gpio =0;
 
 pthread_mutex_t		dht11_mutex_T 	= PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t		dht11_mutex_H 	= PTHREAD_MUTEX_INITIALIZER;
@@ -34,12 +35,13 @@ pthread_cond_t		dht11_cond_H		= PTHREAD_COND_INITIALIZER;
 pthread_cond_t		dht11_cond_T		= PTHREAD_COND_INITIALIZER;
 pthread_mutex_t		mini_uart_mutex 	= PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t		mini_uart_cond		= PTHREAD_COND_INITIALIZER;
+pthread_mutex_t		gpio_mutex		 	= PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t		gpio_cond			= PTHREAD_COND_INITIALIZER;
 
-static 	int 		data=0;
-static 	int 		data_gpio=0;
+static 	int 		data_gpio[2]={0,0};
 static 	char 		user_device[]="raspberry";
 static 	char 		password_device[]="hunglapro13";
-
+static  bool  		command=0;
 
 void *func_thread_curl_gpio(void *ptr);
 void *func_thread_gpio(void *ptr);
@@ -50,16 +52,11 @@ void *func_thread_mini_uart_send(void *ptr);
 void *func_thread_mini_uart_receive(void *ptr);
 
 
-struct Check_Status_Tang_2{
-	bool gpio_1 = false;
-	bool gpio_2 = false;
-};
-Check_Status_Tang_2 check;
-
 typedef struct MemoryStruct{
 	char *memory;
 	size_t size;
 };
+
 //Function to receive data from server
 static size_t WriteMemoryCallBack(void *contents, size_t size, size_t nmemb, void* userp){
 	size_t realsize = size *nmemb;
@@ -93,7 +90,7 @@ int main(void){
 	int iret_mini_uart_send;
 	int iret_mini_uart_receive;
 
-	printf("\r\n" YEL "Program user with curl and motor control" RESET "\r\n");
+	printf("\r\n" YEL "Program for FINAL THESIS of HUNG" RESET "\r\n");
 
 	curl_global_init(CURL_GLOBAL_ALL);
 
@@ -138,6 +135,11 @@ void *func_thread_mini_uart_receive(void *ptr){
 	}
 	fcntl(fd, F_SETFL, 0);
 	while(true){
+		pthread_mutex_lock(&mini_uart_mutex);//giu khoa mutex
+		while(send_mini_uart==0) pthread_cond_wait(&mini_uart_cond,&mini_uart_mutex);	//cho dieu kien
+		pthread_mutex_unlock(&mini_uart_mutex);//mo khoa mutex
+  		send_mini_uart = 0;
+
 		n = read(fd, (void*)buf, 255);
 		if (n < 0) {
 			perror("Read failed - ");
@@ -146,73 +148,115 @@ void *func_thread_mini_uart_receive(void *ptr){
 		else if (n == 0) printf("No data on port\n");
 		else {
 			buf[n] = '\0';
-			printf("%i bytes read : %s", n, buf);
+			printf("%i bytes read from function : %s", n, buf);
 		}
-		pthread_mutex_lock(&mini_uart_mutex);
-		send_mini_uart=1;
-		pthread_cond_signal(&mini_uart_cond);
-		pthread_mutex_unlock(&mini_uart_mutex);
+		
 	}
 }
 
 
 void *func_thread_mini_uart_send(void *ptr){
+	int test=0;
 	int fd;
-	char mini_uart_send[64]="\0";
+	char buf[256];
   	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
   	if (fd == -1) {
    	 	perror("open_port: Unable to open /dev/ttyS0 - ");
     	return(-1);
   	}
   	fcntl(fd, F_SETFL, 0);
-  	while(true){
-  		pthread_mutex_lock(&mini_uart_mutex);//giu khoa mutex
-		while(send_mini_uart==0) pthread_cond_wait(&mini_uart_cond,&mini_uart_mutex);	//cho dieu kien
-		pthread_mutex_unlock(&mini_uart_mutex);//mo khoa mutex
-  		send_mini_uart = 0;
-  			fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
-		  	if (fd == -1) {
-		   	 	perror("open_port: Unable to open /dev/ttyS0 - ");
-		    	return(-1);
-		  	}
-  			// Turn off blocking for reads, use (fd, F_SETFL, FNDELAY) if you want that
-		  	
 
-		  	snprintf(mini_uart_send, 64, "Dht11: 12 28, Gpio: 1\r\n");
-		  	printf("%s\n", mini_uart_send);
-		  	// Write to the port
-		  	int n = write(fd,mini_uart_send, strlen(mini_uart_send));
-		  	if (n < 0) {
-		    	perror("Write failed - ");
-		    	return -1;
-		  	}
-		
+  	int n = write(fd,"SEND", strlen("SEND"));
+  	if (n < 0) {
+    	perror("Write failed - ");
+    	return -1;
   	}
+
+  	n = read(fd, (void*)buf, 255);
+	if (n < 0) {
+		perror("Read failed - ");
+		return -1;
+	}
+	else if (n == 0)
+		printf("No data on port\n");
+	else {
+		printf("%i bytes read : %d", n, buf);
+		if(!strcmp(buf,"OK\n")){
+			while(true){
+			  	// Write to the port
+			  	
+			  	if(!command){
+			  		memset(buf,0,strlen(buf));
+			  		n = write(fd,"DATA", strlen("DATA"));
+			  		if (n < 0) {
+				    	perror("Write failed - ");
+				    	return -1;
+				  	}
+				  	pthread_mutex_lock(&mini_uart_mutex);
+					send_mini_uart=1;
+					pthread_cond_signal(&mini_uart_cond);
+					pthread_mutex_unlock(&mini_uart_mutex);
+			  	}
+			  	else{
+			  		//Send output to STM when have data need change from database.
+			  		n = write(fd,"COMMAND", strlen("COMMAND"));
+			  		if (n < 0) {
+				    	perror("Write failed - ");
+				    	return -1;
+				  	}
+			  	}
+				
+			}
+		}
+		else{
+			printf("Data from STM32 not ok\n");
+			return -2;
+		}
+	}
+  	
 } 
 
 void *func_thread_curl_gpio(void *ptr){
 	CURL *curl_handle;
 	CURLcode res;
 
+	int i=0;
+	char *token;
 	char message[100];
 	int frame_number = 0;
 	char devSerialNumber[] = "GPIO";
 
 	while(1){
-		snprintf(message, 100, "tk=%s&mk=%s&serialnumber=%s&frame=%d&data=%d",user_device, password_device,devSerialNumber, frame_number, data_gpio);
-		frame_number++;
+		MemoryStruct chunk;
+		chunk.memory = malloc(1);
+		chunk.size = 0;
+		snprintf(message, 100, "tk=%s&mk=%s&request=1",user_device, password_device);
 		printf(GRN"[CURL]"RESET"message:%s\r\n",message);
 		curl_handle = curl_easy_init();
 
 		if(curl_handle){
-			curl_easy_setopt(curl_handle, CURLOPT_URL, WEB_DEVICE);
+			curl_easy_setopt(curl_handle, CURLOPT_URL, "https://luutruthietbiiot.000webhostapp.com/receive_device_status.php");
 			curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
+			curl_easy_setopt(curl_handle,CURLOPT_WRITEFUNCTION,WriteMemoryCallBack);
+			curl_easy_setopt(curl_handle,CURLOPT_WRITEDATA,(void *)&chunk);
 			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, message);
 			res = curl_easy_perform(curl_handle);
 			if(res != CURLE_OK){
 				printf(GRN"[CURL]"RESET"curl_easy_perform failed: %s\r\n",curl_easy_strerror(res));
 			}else{
 				printf(GRN"[CURL]"RESET"\r\nSend data OK!\r\n");
+				printf(GRN "[CURL] " RESET "Phan hoi tu server: [%d size] %s\r\n",chunk.size,chunk.memory);
+				token = strtok(chunk.memory," ");
+				while((token!=NULL)){
+					data_gpio[i] = atoi(token);
+					i++;
+					token = strtok(NULL," ");
+				}
+				i=0;
+				pthread_mutex_lock(&gpio_mutex);
+				control_gpio=1;
+				pthread_cond_signal(&gpio_cond);
+				pthread_mutex_unlock(&gpio_mutex);
 				curl_easy_cleanup(curl_handle);
 			}
 		}
@@ -238,20 +282,24 @@ void *func_thread_gpio(void *ptr){
 		return errno;
 	}
 	while(1){
-		ret = write(fd, "ON", 2);
-		data_gpio=1;
-		if(ret<0){
-			perror("Failed to write to device...");
-			return errno;
+		pthread_mutex_lock(&gpio_mutex);//giu khoa mutex
+		while(control_gpio==0) pthread_cond_wait(&gpio_cond,&gpio_mutex);	//cho dieu kien
+		pthread_mutex_unlock(&gpio_mutex);//mo khoa mutex
+		control_gpio=0;
+		if(data_gpio[0]){
+			ret = write(fd, "ON", 2);
+			if(ret<0){
+				perror("Failed to write to device...");
+				return errno;
+			}
 		}
-		sleep(5);
-		ret = write(fd, "OFF", 3);
-		data_gpio=0;
-		if(ret<0){
-			perror("Failed to write to device...");
-			return errno;
+		else{
+			ret = write(fd, "OFF", 3);
+			if(ret<0){
+				perror("Failed to write to device...");
+				return errno;
+			}
 		}
-		sleep(5);
 	}
 }
 void *func_thread_dht11(void *ptr){
