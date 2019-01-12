@@ -96,7 +96,7 @@ static int __init gpio_init(void){
 	//Init gpio with default
 	SET_PIN_INPUT(BUTTON_PIN);
 	GPIO_PULL(2);
-	GPIO_PULLCLK0(0x01000000);
+	GPIO_PULLCLK0(0x00800000);
 
 	printk(KERN_INFO "Start to register chardev\n");
 	major_number = register_chrdev(0, DEVICE_NAME, &fops);

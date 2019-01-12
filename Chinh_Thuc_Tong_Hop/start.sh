@@ -1,6 +1,6 @@
 #!/bin/bash
-DIR=/home/pi
-#cd $DIR
+DIR=/home/pi/Desktop/Chinh_Thuc_Tong_Hop
+cd $DIR
 
 rmmod kernel_gpio_to_control.ko
 rmmod kernel_gpio_to_control_2.ko
@@ -18,4 +18,4 @@ insmod kernel_button_interrupts_2.ko
 insmod kernel_dht11_driver.ko
 
 
-./user_update_final
+$DIR/tonghop
