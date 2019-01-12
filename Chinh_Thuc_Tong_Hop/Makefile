@@ -1,6 +1,8 @@
 obj-m+=kernel_dht11_driver.o
 obj-m+=kernel_gpio_to_control.o
-obj-m+=kernel_srf05_driver.o
+obj-m+=kernel_gpio_to_control_2.o
+obj-m+=kernel_button_interrupts_1.o
+obj-m+=kernel_button_interrupts_2.o
 CFLAG:=-fpermissive -w -Wall
 CLIB:=-lpthread -lcurl
 

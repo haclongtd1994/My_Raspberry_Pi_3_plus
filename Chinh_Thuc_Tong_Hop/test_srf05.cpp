@@ -6,7 +6,7 @@
 
 int main(int argc, char * argv[]){
 	int fwr;
-	int data_srf05[1]={0};
+	long long int data_srf05[3]={0,0,0};
 	printf("Check mearsuring SRF05:\n");
 	int fd = open("/dev/SRF05",O_RDWR);
 	if(fd<0){
@@ -25,7 +25,7 @@ int main(int argc, char * argv[]){
 			printf("Cannot read to /dev/SRF05\n");
 			return -1;
 		}
-		printf("SRF05: %d\n", data_srf05[0]);
+		printf("Start: %lld, Stop: %lld, SRF05: %lld\n", data_srf05[0],data_srf05[1],data_srf05[2]);
 	}
 	
 }

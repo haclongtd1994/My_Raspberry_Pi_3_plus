@@ -8,6 +8,9 @@
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
+#include <linux/ktime.h>
+#include <linux/interrupt.h>
+
 
 MODULE_AUTHOR("PTH");
 MODULE_LICENSE("GPL");
@@ -38,9 +41,14 @@ static char message[256]={0};
 static short size_of_message;
 static struct device *srf05_device;
 static struct class *srf05_class;
-static int srf05_data[1]={0};
+static long long int srf05_data[3]={0,0,0};
+
+static short int irq_gpio;
 static int temp=0;
 static int OK=0;
+static int valid_value = 0;
+static ktime_t echo_start;
+static ktime_t echo_end;
 
 static int srf05_open(struct inode*, struct file*);
 static int srf05_release(struct inode*, struct file*);
@@ -109,32 +117,66 @@ static int READ_DATA_PIN(u32 pin){
 	if(value == 0x01) return 1;
 	else return 0;
 }
+static void GPIO_PULL(u32 value)
+{
+	iowrite32(value, (u32 *)gpio_base + 37);
+}
+
+static void GPIO_PULLCLK0(u32 clock)
+{
+	iowrite32(clock, (u32 *)gpio_base + 38);
+}
 
 static void receive_data_srf05(void){
-	temp=0;
-	//triger and delay 10us
-	SET_PIN_OUTPUT(SRF05_PIN_T);
-	SET_PIN_INPUT(SRF05_PIN);
-	SET_PIN_LOW(SRF05_PIN_T);
-	mdelay(200);
-	SET_PIN_HIGH(SRF05_PIN_T);
-	udelay(10);
-	SET_PIN_LOW(SRF05_PIN_T);
-	//change input and while to mearsuring SRF05
-	
-	while(!READ_DATA_PIN(SRF05_PIN));
-	while(READ_DATA_PIN(SRF05_PIN)){
-		udelay(1);
-		temp++;
+	int counter, to;
+	while(!OK){
+		to=0;
+		//triger and delay 10us
+		SET_PIN_LOW(SRF05_PIN_T);
+		mdelay(200);
+		SET_PIN_HIGH(SRF05_PIN_T);
+		udelay(10);
+		SET_PIN_LOW(SRF05_PIN_T);
+		//change input and while to mearsuring SRF05
+		
+		counter=0;
+		while (valid_value==0) {
+			// Out of range
+			if (++counter>23200) {
+				printk("Time out");to=1;break;
+			}
+			udelay(1);
+		}
+
+		srf05_data[0] =  ktime_to_ns(echo_start);
+		srf05_data[1] =  ktime_to_ns(echo_end);
+		srf05_data[2] = ktime_to_ns(ktime_sub(echo_end,echo_start));
+		printk(KERN_INFO"SRF05_DATA: %lld", srf05_data[2]);
+		if(to==1)  	OK=0;
+		else		OK=1;
 	}
-
-
-	srf05_data[0] = temp/58;
-	printk(KERN_INFO"SRF05_DATA: %d", srf05_data[0]);
-	OK=1;
 	printk(KERN_INFO"Complete mearsuring\n");
 }
 
+static irqreturn_t  button_irq_handler(int irq, void *dev_id)
+{
+	ktime_t ktime_dummy;
+
+	//gpio_set_value(HCSR04_TEST,1);
+
+	if (valid_value==0) {
+		ktime_dummy=ktime_get();
+		if (READ_DATA_PIN(SRF05_PIN)==1) {
+			echo_start=ktime_dummy;
+		} else {
+			echo_end=ktime_dummy;
+			valid_value=1;
+		}
+	}
+
+	//gpio_set_value(HCSR04_TEST,0);
+	return IRQ_HANDLED;
+}
 
 static int __init srf05_init(void){
 	printk(KERN_INFO"Starting config SRF05___Init....\n");
@@ -162,6 +204,30 @@ static int __init srf05_init(void){
 		printk(KERN_ALERT"Cannot create device file for srf05\n");
 		return PTR_ERR(srf05_device);
 	}
+
+
+	SET_PIN_OUTPUT(SRF05_PIN_T);
+	SET_PIN_INPUT(SRF05_PIN);
+	GPIO_PULL(2);
+	GPIO_PULLCLK0(0x00800000);
+
+	irq_gpio = gpio_to_irq(SRF05_PIN);
+	if (irq_gpio < 0) {
+		printk(KERN_INFO "%s: GPIO to IRQ mapping failure\n", __func__);
+		return -ENODEV;
+	}
+
+	printk(KERN_INFO "%s: Mapped interrupt %d\n", __func__, irq_gpio);
+
+	if (request_irq(irq_gpio,
+		button_irq_handler,
+		IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
+		"hy-srf05",
+		NULL)) {
+		printk(KERN_INFO "%s: Irq request failure\n", __func__);
+		return -ENODEV;
+	}
+
 	mutex_init(&mutex_srf05);
 	printk(KERN_INFO"Create device file for SRF05 complete\n");
 	return 0;
@@ -194,6 +260,7 @@ static int srf05_release(struct inode* inodep, struct file* filep){
 static ssize_t srf05_write(struct file* filep, const char *buf, size_t len, loff_t *offset){
 	sprintf(message,"%s",buf);
 	if(!strcmp(message,"READ_SRF05")){
+		srf05_data[0] = 0;
 		receive_data_srf05();
 	}
 	printk(KERN_INFO"Receive message from user: %s\n", message);
@@ -203,11 +270,11 @@ static ssize_t srf05_write(struct file* filep, const char *buf, size_t len, loff
 static ssize_t srf05_read(struct file* filep, char *buf, size_t len, loff_t *offset){
 	int error;
 	if(OK){
-		printk(KERN_INFO "message to user: MUC NUOC: %d\n", srf05_data[0]);
-		error = copy_to_user(buf, srf05_data, sizeof(int));
+		printk(KERN_INFO "message to user: MUC NUOC: %lld\n", srf05_data[2]);
+		error = copy_to_user(buf, srf05_data, sizeof(long long int)*3);
 		if(!error){
-			printk(KERN_INFO "Send OK: MUC NUOC: %d\n", srf05_data[0]);
-			return 4;
+			printk(KERN_INFO "Send OK: MUC NUOC: %lld\n", srf05_data[2]);
+			return 32;
 		}
 		else{
 			printk(KERN_ALERT "Cannot send message to user \n");
